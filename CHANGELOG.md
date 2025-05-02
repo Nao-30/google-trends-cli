@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.0] - 2025-05-02
+
+### Added
+- 
+
+### Changed
+- 
+
+### Fixed
+- 
+
+
 All notable changes to the Google Trends CLI project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/0.0.1/),
