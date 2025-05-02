@@ -15,7 +15,7 @@ extras_require = {
 
 setup(
     name="gtrends",
-    version="0.0.1",
+    version="1.0.0",
     author="KitabTune",
     author_email="info@kitabtune.com",
     description="CLI tool for Google Trends data analysis and content suggestions",
