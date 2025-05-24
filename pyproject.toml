@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gtrends-cli"
-version = "0.3.1"
+version = "0.3.2"
 description = "CLI and API tools for Google Trends data analysis and content suggestions"
 readme = "README.md"
 authors = [
@@ -35,7 +35,7 @@ Repository = "https://github.com/Nao-30/google-trends-cli.git"
 Issues = "https://github.com/Nao-30/google-trends-cli/issues"
 Changelog = "https://github.com/Nao-30/google-trends-cli/blob/main/CHANGELOG.md"
 MyBlog = "https://blog.mohammed-al-kebsi.space"
-"Download Link" = "https://github.com/Nao-30/google-trends-cli/archive/refs/tags/v0.3.1.tar.gz"
+"Download Link" = "https://github.com/Nao-30/google-trends-cli/archive/refs/tags/v0.3.2.tar.gz"
 
 [project.scripts]
 gtrends = "gtrends_cli.main:cli"

@@ -49,7 +49,7 @@ extras_require = {
 
 setup(
     name="gtrends-cli",
-    version="0.3.1",
+    version="0.3.2",
     author="Mohammed A. Al-Kebsi",
     author_email="mohammed.k@mohammed-al-kebsi.space",
     description="CLI and API tools for Google Trends data analysis and content suggestions",
