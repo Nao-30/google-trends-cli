@@ -12,7 +12,7 @@ on:
           - minor
           - patch
       manual_version:
-        description: 'Manual version override (leave empty to auto-calculate based on release_type)'
+        description: 'Manual version override (leave empty to auto-calculate)'
         required: false
         type: string
 jobs:
@@ -20,143 +20,219 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # Use v4
+        uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # Needed for bump-my-version to potentially find tags if configured
+          fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
-
+          
+      - name: Debug repository state
+        run: |
+          echo "Current working directory: $(pwd)"
+          echo "Files in directory:"
+          ls -la
+          echo "Git status:"
+          git status
+          
       - name: Set up Python
-        uses: actions/setup-python@v5 # Use v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-
+          
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install bump-my-version # Changed from bumpversion
-          # pip install -e . # No longer strictly needed for just version bumping
-
+          pip install bumpversion
+          pip install -e .
+          
       - name: Configure Git
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-
-      - name: Get current project version from pyproject.toml
-        id: project_version
+          
+      - name: Get current version
+        id: current
         run: |
-          CURRENT_PYPROJECT_VERSION=$(awk -F' = ' '/^version = ".+"/{gsub(/"/, "", $2); print $2}' pyproject.toml)
-          echo "Current version from pyproject.toml: $CURRENT_PYPROJECT_VERSION"
-          if [ -z "$CURRENT_PYPROJECT_VERSION" ]; then
-            echo "::error::Could not read version from pyproject.toml"
-            exit 1
+          # Check setup.py first
+          if [ -f "setup.py" ]; then
+            CURRENT_VERSION=$(grep -Po "version=[\"']\K[^\"']*" setup.py || echo "0.0.0")
+            echo "Current version from setup.py: $CURRENT_VERSION"
+          # Check setup.cfg next
+          elif [ -f "setup.cfg" ]; then
+            CURRENT_VERSION=$(grep -Po "version\s*=\s*\K[^\"']*" setup.cfg || echo "0.0.0")
+            echo "Current version from setup.cfg: $CURRENT_VERSION"
+          # Finally, check if any modules have __init__.py with version
+          elif [ -d "src" ]; then
+            for init_file in $(find src -name "__init__.py"); do
+              if grep -q "__version__" "$init_file"; then
+                CURRENT_VERSION=$(grep -Po "__version__\s*=\s*[\"']\K[^\"']*" "$init_file" || echo "0.0.0")
+                echo "Current version from $init_file: $CURRENT_VERSION"
+                break
+              fi
+            done
+          else
+            echo "::warning::Could not find version files. Using default 0.0.0"
+            CURRENT_VERSION="0.0.0"
           fi
-          echo "version=$CURRENT_PYPROJECT_VERSION" >> $GITHUB_OUTPUT
-
-      - name: Determine Next Version
-        id: next_version_logic # Renamed for clarity
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          
+      - name: Calculate next version
+        id: next
         run: |
-          CURRENT_VERSION="${{ steps.project_version.outputs.version }}"
-          NEXT_VERSION_VAL=""
-
+          CURRENT_VERSION=${{ steps.current.outputs.current_version }}
+          
+          # Use manual version if provided
           if [ ! -z "${{ github.event.inputs.manual_version }}" ]; then
-            NEXT_VERSION_VAL="${{ github.event.inputs.manual_version }}"
-            echo "Using manual version: $NEXT_VERSION_VAL"
+            NEXT_VERSION="${{ github.event.inputs.manual_version }}"
           else
-            # If not manual, bump-my-version will handle incrementing.
-            # We just need to pass the part (major, minor, patch).
-            # The actual calculation will be done by bump-my-version.
-            # We can get the *prospective* next version using --dry-run --list if needed earlier,
-            # but for the commit message etc., we'll get it after bump-my-version runs.
-            echo "Release type for bump-my-version: ${{ github.event.inputs.release_type }}"
+            # Parse current version
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+            
+            # Increment based on release type
+            case "${{ github.event.inputs.release_type }}" in
+              major)
+                NEXT_VERSION="$((MAJOR + 1)).0.0"
+                ;;
+              minor)
+                NEXT_VERSION="$MAJOR.$((MINOR + 1)).0"
+                ;;
+              patch)
+                NEXT_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+                ;;
+            esac
           fi
-          echo "determined_next_version=$NEXT_VERSION_VAL" >> $GITHUB_OUTPUT # Will be empty if not manual
-
-      - name: Update version number using bump-my-version
-        id: bmv # Give this step an id to get output
+          
+          echo "Next version: $NEXT_VERSION"
+          echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+          
+      - name: Update version number
         run: |
-          # Set current_version for bump-my-version if not in its config,
-          # or if you want to explicitly pass it.
-          # The config in pyproject.toml will use this.
-          export BUMPVERSION_CURRENT_VERSION="${{ steps.project_version.outputs.version }}"
-
-          if [ ! -z "${{ steps.next_version_logic.outputs.determined_next_version }}" ]; then
-            # Manual version override
-            bump-my-version --new-version "${{ steps.next_version_logic.outputs.determined_next_version }}" --allow-dirty
+          # Update version in setup.py
+          if [ -f "setup.py" ]; then
+            if grep -q "version=" setup.py; then
+              sed -i "s/version=[\"'][^\"']*[\"']/version=\"${{ steps.next.outputs.next_version }}\"/" setup.py
+              echo "Updated version in setup.py"
+            else
+              echo "::warning::No version= string found in setup.py"
+            fi
           else
-            # Auto-increment based on release_type
-            bump-my-version "${{ github.event.inputs.release_type }}" --allow-dirty
+            echo "::warning::setup.py file not found"
           fi
-          # Get the new version from pyproject.toml after bump-my-version has run
-          NEW_VERSION_AFTER_BUMP=$(awk -F' = ' '/^version = ".+"/{gsub(/"/, "", $2); print $2}' pyproject.toml)
-          echo "Version in pyproject.toml after bump: $NEW_VERSION_AFTER_BUMP"
-          echo "new_version=$NEW_VERSION_AFTER_BUMP" >> $GITHUB_OUTPUT
-
-      - name: Verify pyproject.toml changes
-        run: |
-          echo "Contents of pyproject.toml after version bump:"
-          cat pyproject.toml
-          echo "---"
-          grep 'version = ' pyproject.toml
-          grep '"Download Link" = ' pyproject.toml
-
+          
+          # Update version in setup.cfg
+          if [ -f "setup.cfg" ]; then
+            if grep -q "version\s*=" setup.cfg; then
+              sed -i "s/version\s*=\s*[0-9.]*/version = ${{ steps.next.outputs.next_version }}/" setup.cfg
+              echo "Updated version in setup.cfg"
+            else
+              echo "::warning::No version= string found in setup.cfg"
+            fi
+          fi
+          
+          # Update version in any __init__.py files that contain __version__
+          if [ -d "src" ]; then
+            for init_file in $(find src -name "__init__.py"); do
+              if grep -q "__version__" "$init_file"; then
+                if grep -q "__version__ = '" "$init_file"; then
+                  # Single quote format
+                  sed -i "s/__version__ = '[^']*'/__version__ = '${{ steps.next.outputs.next_version }}'/" "$init_file"
+                elif grep -q '__version__ = "' "$init_file"; then
+                  # Double quote format
+                  sed -i 's/__version__ = "[^"]*"/__version__ = "${{ steps.next.outputs.next_version }}"/' "$init_file"
+                else
+                  # Generic replacement
+                  sed -i "s/__version__\s*=\s*[\"'][^\"']*[\"']/__version__ = '${{ steps.next.outputs.next_version }}'/" "$init_file"
+                fi
+                echo "Updated version in $init_file"
+              fi
+            done
+          fi
+          
+          # Debug - verify files were updated
+          echo "Updated files:"
+          if [ -f "setup.py" ]; then
+            echo "setup.py content:"
+            cat setup.py
+          fi
+          if [ -f "setup.cfg" ]; then
+            echo "setup.cfg content:"
+            cat setup.cfg
+          fi
+          
       - name: Update Changelog
         run: |
           DATE=$(date +%Y-%m-%d)
-          # Use the version determined by bump-my-version
-          NEW_VERSION_FOR_CHANGELOG="${{ steps.bmv.outputs.new_version }}"
-          NEW_ENTRY="## [$NEW_VERSION_FOR_CHANGELOG] - $DATE\n\n### Added\n- \n\n### Changed\n- \n\n### Fixed\n- \n"
-
+          NEW_ENTRY="## [${{ steps.next.outputs.next_version }}] - $DATE\n\n### Added\n- \n\n### Changed\n- \n\n### Fixed\n- \n"
+          
+          # Check if CHANGELOG.md exists
           if [ ! -f "CHANGELOG.md" ]; then
             echo "::notice::Creating new CHANGELOG.md file"
             echo -e "# Changelog\n\nAll notable changes to the project will be documented in this file.\n\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),\nand this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n\n$NEW_ENTRY" > CHANGELOG.md
           else
+            # Create backup
             cp CHANGELOG.md CHANGELOG.md.bak
+            
+            # Extract header (everything before the first ## line)
             awk '/^##/{exit} {print}' CHANGELOG.md > header.tmp
+            
+            # Extract existing content without header
             awk '/^##/{p=1} p' CHANGELOG.md > content.tmp
+            
+            # Combine header, new entry, and content
             cat header.tmp > CHANGELOG.md
             echo -e "\n$NEW_ENTRY" >> CHANGELOG.md
             cat content.tmp >> CHANGELOG.md
+            
+            # Cleanup
             rm header.tmp content.tmp
           fi
-
-          echo "::notice::Updated CHANGELOG.md with new version entry for $NEW_VERSION_FOR_CHANGELOG"
+          
+          echo "::notice::Updated CHANGELOG.md with new version entry"
           echo "First 20 lines of CHANGELOG.md:"
           head -n 20 CHANGELOG.md
-
-      - name: Create Release Branch and PR
+          
+      - name: Create Release Branch
         run: |
-          NEW_VERSION_FOR_BRANCH="${{ steps.bmv.outputs.new_version }}"
-          RELEASE_BRANCH="release/v$NEW_VERSION_FOR_BRANCH"
-
+          RELEASE_BRANCH="release/v${{ steps.next.outputs.next_version }}"
+          
+          # Check if branch already exists remotely
           if git ls-remote --heads origin $RELEASE_BRANCH | grep -q $RELEASE_BRANCH; then
             echo "::warning::Branch $RELEASE_BRANCH already exists remotely. Deleting and recreating."
+            # Force delete the remote branch
             git push origin --delete $RELEASE_BRANCH || true
           fi
-
+          
+          # Check if branch exists locally
           if git show-ref --verify --quiet refs/heads/$RELEASE_BRANCH; then
             git branch -D $RELEASE_BRANCH
           fi
-
+          
+          # Create new branch
           git checkout -b $RELEASE_BRANCH
-          # Stage pyproject.toml, CHANGELOG.md
-          # and any other files bump-my-version might have changed (e.g., __init__.py if configured)
-          git add pyproject.toml CHANGELOG.md
-          # Example if you also configured __init__.py for bump-my-version:
-          # git add src/gtrends_cli/__init__.py
-
+          
+          # Stage all changes
+          git add setup.py setup.cfg CHANGELOG.md $(find src -name "__init__.py" -exec grep -l "__version__" {} \;)
+          
+          # Debug git status
           echo "Git status after adding files:"
           git status
-          git commit -m "Bump version to $NEW_VERSION_FOR_BRANCH and update changelog"
+          
+          # Commit changes
+          git commit -m "Bump version to ${{ steps.next.outputs.next_version }} and update changelog"
+          
+          # Push to remote
           git push -u origin $RELEASE_BRANCH --force
+          
           echo "::notice::Created/updated release branch $RELEASE_BRANCH"
-
+          
+          # Check if PR already exists
           PR_EXISTS=$(gh pr list --head $RELEASE_BRANCH --base main --json number --jq 'length')
-
+          
           if [ "$PR_EXISTS" -eq "0" ]; then
+            # Create pull request if it doesn't exist
             gh pr create --base main --head $RELEASE_BRANCH \
-              --title "Release v$NEW_VERSION_FOR_BRANCH" \
-              --body "## Release v$NEW_VERSION_FOR_BRANCH
-            This PR prepares the release of version $NEW_VERSION_FOR_BRANCH.
+              --title "Release v${{ steps.next.outputs.next_version }}" \
+              --body "## Release v${{ steps.next.outputs.next_version }}
+            This PR prepares the release of version ${{ steps.next.outputs.next_version }}.
             ### Before merging:
             - [ ] Review and update the CHANGELOG.md
             - [ ] Verify all tests pass

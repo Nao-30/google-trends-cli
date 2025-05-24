@@ -13,9 +13,6 @@ authors = [
 license = {text = "MIT"}
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Development Status :: 4 - Beta",
@@ -33,9 +30,6 @@ Homepage = "https://github.com/Nao-30/google-trends-cli"
 Documentation = "https://github.com/Nao-30/google-trends-cli/tree/main/docs"
 Repository = "https://github.com/Nao-30/google-trends-cli.git"
 Issues = "https://github.com/Nao-30/google-trends-cli/issues"
-Changelog = "https://github.com/Nao-30/google-trends-cli/blob/main/CHANGELOG.md"
-MyBlog = "https://blog.mohammed-al-kebsi.space"
-"Download Link" = "https://github.com/Nao-30/google-trends-cli/archive/refs/tags/v0.3.0.tar.gz"
 
 [project.scripts]
 gtrends = "gtrends_cli.main:cli"
@@ -90,42 +84,3 @@ exclude_lines = [
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
 ]
-
-[tool.bumpversion]
-# current_version will be read from project.version if not specified here
-# or you can explicitly set it and bump-my-version will keep it in sync.
-# For this workflow, it's better if bump-my-version reads it from project.version.
-# Let's assume project.version is the source of truth for the *current* version.
-
-commit = false  # Your workflow handles commits
-tag = false     # Your workflow handles tags/releases
-message = "Bump version: {current_version} → {new_version}" # Default, can be overridden
-
-[[tool.bumpversion.files]]
-filename = "pyproject.toml"
-search = 'version = "{current_version}"'
-replace = 'version = "{new_version}"'
-
-[[tool.bumpversion.files]]
-filename = "pyproject.toml"
-# This will find the Download Link line and update the version number within it.
-# It assumes the version part is like vX.Y.Z.tar.gz
-search = '"Download Link" = "https://github.com/Nao-30/google-trends-cli/archive/refs/tags/v{current_version}.tar.gz"'
-replace = '"Download Link" = "https://github.com/Nao-30/google-trends-cli/archive/refs/tags/v{new_version}.tar.gz"'
-
-[[tool.bumpversion.files]]
-filename = "src/gtrends_core/__init__.py"
-search = '__version__ = "{current_version}"'
-replace = '__version__ = "{new_version}"'
-
-[[tool.bumpversion.files]]
-filename = "setup.py"
-search = 'version="{current_version}",'
-replace = '__version__ = "{new_version}"'
-
-
-# Optional: If you also want to update __version__ in an __init__.py
-# [[tool.bumpversion.files]]
-# filename = "src/gtrends_cli/__init__.py" # Adjust path as needed
-# search = '__version__ = "{current_version}"'
-# replace = '__version__ = "{new_version}"'
